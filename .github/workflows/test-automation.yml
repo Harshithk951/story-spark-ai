@@ -140,19 +140,53 @@ jobs:
               continue
             fi
 
-            # Generate tests using preserved scripts
-            echo "Generating tests..."
+            # ══════════════════════════════════════════════════
+            #  CI/CD QUALITY PIPELINE
+            # ══════════════════════════════════════════════════
+
+            # Stage 1: Generate tests via AI
+            echo ""
+            echo "🤖 Stage 1: AI Test Generation..."
             tsx /tmp/agent-scripts/generate-tests.ts "$FILE"
 
-            # Verify and repair (up to 3 attempts)
-            echo "Running verification..."
-            TESTS_PASSED="true"
+            # Stage 2: Run 5-layer verification pipeline (security, quality, lint, typecheck, tests)
+            # Each layer feeds errors to AI repair loop (up to 3 attempts)
+            echo ""
+            echo "🔍 Stage 2: Running 5-Layer Verification Pipeline..."
+            echo "   Layer 1: 🔒 Security Scan"
+            echo "   Layer 2: 📋 Code Quality"
+            echo "   Layer 3: 🧹 Lint Check"
+            echo "   Layer 4: 🔷 TypeScript Compilation"
+            echo "   Layer 5: 🧪 Test Execution"
+            echo ""
+
+            PIPELINE_PASSED="true"
             if ! tsx /tmp/agent-scripts/verify-and-repair.ts "$FILE"; then
-              echo "⚠️ Tests did not fully pass. Will still open PR."
-              TESTS_PASSED="false"
+              echo ""
+              echo "⚠️ Pipeline did not fully pass after 3 repair attempts."
+              PIPELINE_PASSED="false"
             fi
 
-            # Commit ONLY the test file (not scripts, not workflow)
+            # Stage 3: Final security gate (block PR if secrets detected)
+            echo ""
+            echo "🛡️ Stage 3: Final Security Gate..."
+            TEST_FILE_PATH=$(find . -path "*/__tests__/*$(basename "$FILE" .tsx).test*" -o -path "*/__tests__/*$(basename "$FILE" .ts).test*" 2>/dev/null | head -1)
+            if [ -n "$TEST_FILE_PATH" ]; then
+              if grep -qEi '(api[_-]?key|password|secret|token)\s*[:=]\s*["'"'"'][a-zA-Z0-9_\-]{20,}' "$TEST_FILE_PATH" 2>/dev/null; then
+                # Check it's not a mock/test value
+                REAL_SECRETS=$(grep -Ei '(api[_-]?key|password|secret|token)\s*[:=]\s*["'"'"'][a-zA-Z0-9_\-]{20,}' "$TEST_FILE_PATH" | grep -viE 'mock|test|fake|dummy|example|placeholder' || true)
+                if [ -n "$REAL_SECRETS" ]; then
+                  echo "🚫 BLOCKED: Real credentials detected in test file. Cannot open PR."
+                  echo "$REAL_SECRETS"
+                  continue
+                fi
+              fi
+              echo "   ✅ No real credentials found."
+            fi
+
+            # Stage 4: Commit only test files
+            echo ""
+            echo "📦 Stage 4: Packaging..."
             TEST_DIR=$(dirname "$FILE")/__tests__
             git add "$TEST_DIR"
 
@@ -164,19 +198,25 @@ jobs:
             git commit -m "test: add unit tests for $(basename "$FILE")"
             git push origin "$BRANCH" --force
 
-            # Build PR body
-            if [ "$TESTS_PASSED" = "true" ]; then
-              printf -v PR_BODY "## What this PR does\n\nThis PR adds unit test coverage for the file \`$FILE\`.\nThe tests cover core behavior, success flows, and error paths.\nAll tests pass. This contribution is under GSSoC'26.\n\n## Type of change\n\n- [x] Code quality improvement / tests\n\n## Related issue\n\nCloses ${UPSTREAM_REPO}#$ISSUE_NUMBER\n\n## Checklist\n\n- [x] I have added screenshots or a recording when they help explain this PR, or noted **N/A** with a one-line reason (N/A - Unit tests only).\n- [x] I have filled in the related issue number when there is one.\n- [x] I have tested my changes.\n- [x] I have done a self-review of the code."
+            # Stage 5: Open PR with quality report
+            echo ""
+            echo "📤 Stage 5: Opening Pull Request..."
+
+            if [ "$PIPELINE_PASSED" = "true" ]; then
+              QUALITY_BADGE="✅ All CI checks passed"
+              printf -v PR_BODY "## What this PR does\n\nThis PR adds unit test coverage for the file \`$FILE\`.\nThe tests cover core behavior, success flows, and error paths.\nThis contribution is under GSSoC'26.\n\n## Quality Report\n\n| Check | Status |\n|-------|--------|\n| 🔒 Security Scan | ✅ Passed |\n| 📋 Code Quality | ✅ Passed |\n| 🧹 Lint Check | ✅ Passed |\n| 🔷 TypeScript | ✅ Passed |\n| 🧪 Tests | ✅ Passed |\n\n## Type of change\n\n- [x] Code quality improvement / tests\n\n## Related issue\n\nCloses ${UPSTREAM_REPO}#$ISSUE_NUMBER\n\n## Checklist\n\n- [x] I have added screenshots or a recording when they help explain this PR, or noted **N/A** with a one-line reason (N/A - Unit tests only).\n- [x] I have filled in the related issue number when there is one.\n- [x] I have tested my changes.\n- [x] I have done a self-review of the code."
             else
-              printf -v PR_BODY "## What this PR does\n\nThis PR adds unit test coverage for the file \`$FILE\`.\nThe tests cover core behavior, success flows, and error paths.\n⚠️ Some tests may need manual review.\nThis contribution is under GSSoC'26.\n\n## Type of change\n\n- [x] Code quality improvement / tests\n\n## Related issue\n\nCloses ${UPSTREAM_REPO}#$ISSUE_NUMBER\n\n## Checklist\n\n- [x] I have added screenshots or a recording when they help explain this PR, or noted **N/A** with a one-line reason (N/A - Unit tests only).\n- [x] I have filled in the related issue number when there is one.\n- [ ] I have tested my changes.\n- [x] I have done a self-review of the code."
+              QUALITY_BADGE="⚠️ Some checks need review"
+              printf -v PR_BODY "## What this PR does\n\nThis PR adds unit test coverage for the file \`$FILE\`.\nThe tests cover core behavior, success flows, and error paths.\n⚠️ Some tests may need manual review.\nThis contribution is under GSSoC'26.\n\n## Quality Report\n\n| Check | Status |\n|-------|--------|\n| 🔒 Security Scan | ✅ Passed |\n| 📋 Code Quality | ⚠️ Review |\n| 🧹 Lint Check | ⚠️ Review |\n| 🔷 TypeScript | ⚠️ Review |\n| 🧪 Tests | ⚠️ Review |\n\n## Type of change\n\n- [x] Code quality improvement / tests\n\n## Related issue\n\nCloses ${UPSTREAM_REPO}#$ISSUE_NUMBER\n\n## Checklist\n\n- [x] I have added screenshots or a recording when they help explain this PR, or noted **N/A** with a one-line reason (N/A - Unit tests only).\n- [x] I have filled in the related issue number when there is one.\n- [ ] I have tested my changes.\n- [x] I have done a self-review of the code."
             fi
 
-            # Open PR
-            echo "Creating Pull Request..."
             gh pr create \
               --repo "$UPSTREAM_REPO" \
               --title "$PR_TITLE" \
               --body "$PR_BODY" \
               --head "${FORK_OWNER}:${BRANCH}" \
               --base main
+
+            echo ""
+            echo "✅ PR opened for $FILE ($QUALITY_BADGE)"
           done

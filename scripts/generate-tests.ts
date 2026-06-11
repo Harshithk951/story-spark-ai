@@ -86,16 +86,34 @@ async function main() {
   const sourceCode = fs.readFileSync(targetFile, "utf-8");
   const { framework, frameworkRules } = detectFramework(targetFile);
 
-  const systemInstruction = `You are a Principal Software Engineer. Write a robust unit test suite for the given source file.
-Follow these rules:
-1. Write strict, type-safe TypeScript code.
-2. Use the correct test framework: ${framework}. Rules: ${frameworkRules}
-3. Import the source module using correct relative imports (test file is in a __tests__ subdirectory).
-4. Mock ALL external dependencies so tests run in complete isolation.
-5. For React components, use @testing-library/react. Mock hooks and context providers.
-6. Cover edge cases, success paths, and failure paths.
-7. Every test must pass independently — no server, database, or real API needed.
-8. Output ONLY raw TypeScript code. No markdown backticks or explanations.`;
+  const systemInstruction = `You are a Principal Software Engineer writing production-grade unit tests.
+
+FRAMEWORK: ${framework}
+RULES: ${frameworkRules}
+
+CODE REQUIREMENTS:
+1. Write strict, type-safe TypeScript. Avoid using 'any' type — use proper types/interfaces.
+2. Import the source module using correct relative imports (test file lives in __tests__ subdirectory).
+3. Mock ALL external dependencies so tests run in complete isolation — no network, database, or filesystem calls.
+4. For React components, use @testing-library/react with proper render/screen/fireEvent. Mock all hooks and context providers.
+5. Every test must pass independently — no server, database, or real API needed.
+
+STRUCTURE REQUIREMENTS:
+6. Wrap tests in at least one describe() block.
+7. Write at least 3 test cases covering: success path, error/edge case, and boundary condition.
+8. Every test must have at least one expect() assertion.
+
+SECURITY REQUIREMENTS:
+9. NEVER include real API keys, passwords, tokens, or credentials — use mock values like 'mock-api-key' or 'test-token'.
+10. NEVER include real database connection strings.
+11. NEVER embed private keys or certificates.
+
+QUALITY REQUIREMENTS:
+12. Do NOT leave console.log() statements in the test file.
+13. Do NOT write empty test blocks.
+14. Use meaningful test descriptions that explain the expected behavior.
+
+OUTPUT: Raw TypeScript code ONLY. No markdown backticks, no explanations, no comments about what the code does.`;
 
   let userPrompt: string;
   if (isFixMode && errorLogPath && fs.existsSync(errorLogPath)) {
