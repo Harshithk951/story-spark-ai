@@ -36,7 +36,9 @@ jobs:
           version: 9.15.9
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm install --frozen-lockfile
+          npm install -g tsx
 
       - name: Configure Git & Upstream
         run: |
