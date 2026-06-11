@@ -47,15 +47,20 @@ jobs:
           git remote add upstream https://github.com/ronisarkarexe/story-spark-ai.git
           git fetch upstream main
 
+      - name: Preserve Scripts
+        run: |
+          # Copy scripts to /tmp so they survive branch switches
+          cp -r scripts /tmp/agent-scripts
+
       - name: Run Test Agent
         run: |
           UPSTREAM_REPO="ronisarkarexe/story-spark-ai"
           FORK_OWNER="Harshithk951"
           MAX_FILES=2
 
-          # 1. Scan for untested files
+          # 1. Scan for untested files (run from fork main where scripts exist)
           echo "Scanning for untested files..."
-          TARGETS=$(npx tsx scripts/coverage-scanner.ts)
+          TARGETS=$(tsx scripts/coverage-scanner.ts)
           echo "Top untested files: $TARGETS"
 
           COUNT=0
@@ -80,8 +85,14 @@ jobs:
 
             COUNT=$((COUNT+1))
 
-            # ── KEY FIX: Always branch from upstream/main so PRs only have 1 commit ──
-            git checkout upstream/main --detach
+            # Create a clean branch from upstream/main
+            SAFE_NAME=$(echo "$FILE" | sed 's/[^a-zA-Z0-9-]/_/g')
+            BRANCH="test/add-coverage-$SAFE_NAME"
+            git checkout upstream/main -- .
+            git checkout -B "$BRANCH" upstream/main
+
+            # Restore scripts (they don't exist on upstream)
+            cp -r /tmp/agent-scripts/* scripts/ 2>/dev/null || mkdir -p scripts && cp -r /tmp/agent-scripts/* scripts/
 
             # Reuse existing issue or create new one
             ISSUE_TITLE="Improve: Add tests for $FILE"
@@ -103,24 +114,19 @@ jobs:
             printf -v ASSIGN_BODY "/assign\nI am contributing under GSSoC'26"
             gh issue comment "$ISSUE_NUMBER" --repo "$UPSTREAM_REPO" --body "$ASSIGN_BODY"
 
-            # Create clean branch from upstream/main
-            SAFE_NAME=$(echo "$FILE" | sed 's/[^a-zA-Z0-9-]/_/g')
-            BRANCH="test/add-coverage-$SAFE_NAME"
-            git checkout -b "$BRANCH"
-
-            # Generate tests
+            # Generate tests using preserved scripts
             echo "Generating tests..."
-            npx tsx scripts/generate-tests.ts "$FILE"
+            tsx /tmp/agent-scripts/generate-tests.ts "$FILE"
 
             # Verify and repair (up to 3 attempts)
             echo "Running verification..."
             TESTS_PASSED="true"
-            if ! npx tsx scripts/verify-and-repair.ts "$FILE"; then
+            if ! tsx /tmp/agent-scripts/verify-and-repair.ts "$FILE"; then
               echo "⚠️ Tests did not fully pass. Will still open PR."
               TESTS_PASSED="false"
             fi
 
-            # Commit only the test file (not scripts or workflow)
+            # Commit ONLY the test file (not scripts, not workflow)
             TEST_DIR=$(dirname "$FILE")/__tests__
             git add "$TEST_DIR"
 
