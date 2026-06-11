@@ -83,7 +83,7 @@ jobs:
               continue
             fi
 
-            COUNT=$((COUNT+1))
+            # COUNT is incremented AFTER PR is opened (not here) so skips don't waste slots
 
             # Create a clean branch from upstream/main
             SAFE_NAME=$(echo "$FILE" | sed 's/[^a-zA-Z0-9-]/_/g')
@@ -217,6 +217,8 @@ jobs:
               --head "${FORK_OWNER}:${BRANCH}" \
               --base main
 
+            # Only count after PR is successfully opened
+            COUNT=$((COUNT+1))
             echo ""
-            echo "✅ PR opened for $FILE ($QUALITY_BADGE)"
+            echo "✅ PR #$COUNT opened for $FILE ($QUALITY_BADGE)"
           done
