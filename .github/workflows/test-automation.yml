@@ -110,9 +110,35 @@ jobs:
               echo "Created issue #$ISSUE_NUMBER"
             fi
 
-            # Assign via comment
-            printf -v ASSIGN_BODY "/assign\nI am contributing under GSSoC'26"
-            gh issue comment "$ISSUE_NUMBER" --repo "$UPSTREAM_REPO" --body "$ASSIGN_BODY"
+            # Check if issue is already assigned to someone else
+            CURRENT_ASSIGNEE=$(gh issue view "$ISSUE_NUMBER" --repo "$UPSTREAM_REPO" --json assignees --jq '.assignees[].login' 2>/dev/null)
+            if [ -n "$CURRENT_ASSIGNEE" ] && ! echo "$CURRENT_ASSIGNEE" | grep -qi "$FORK_OWNER"; then
+              echo "❌ Issue #$ISSUE_NUMBER already assigned to $CURRENT_ASSIGNEE. Skipping."
+              continue
+            fi
+
+            # Assign via comment (only if not already assigned to us)
+            if echo "$CURRENT_ASSIGNEE" | grep -qi "$FORK_OWNER"; then
+              echo "Already assigned to $FORK_OWNER. Skipping /assign comment."
+            else
+              printf -v ASSIGN_BODY "/assign\nI am contributing under GSSoC'26"
+              gh issue comment "$ISSUE_NUMBER" --repo "$UPSTREAM_REPO" --body "$ASSIGN_BODY"
+            fi
+
+            # Wait for the assignment bot to process
+            echo "Waiting for assignment bot..."
+            sleep 8
+
+            # Verify the issue is assigned to us
+            ASSIGNEE=$(gh issue view "$ISSUE_NUMBER" --repo "$UPSTREAM_REPO" --json assignees --jq '.assignees[].login' 2>/dev/null)
+            echo "Current assignee(s): $ASSIGNEE"
+
+            if echo "$ASSIGNEE" | grep -qi "$FORK_OWNER"; then
+              echo "✅ Issue #$ISSUE_NUMBER assigned to $FORK_OWNER. Proceeding."
+            else
+              echo "❌ Issue #$ISSUE_NUMBER not assigned to $FORK_OWNER (assigned to: $ASSIGNEE). Skipping."
+              continue
+            fi
 
             # Generate tests using preserved scripts
             echo "Generating tests..."
